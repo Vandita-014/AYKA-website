@@ -180,10 +180,6 @@ body {
   min-width: 200px;
   margin: 0 20px;
   text-align: center;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
 }
 
 .slide img {
@@ -197,11 +193,6 @@ body {
   font-size: 16px;
   font-weight: 600;
   color: #222;
-  margin-bottom: 8px;
-}
-
-.slide .btn-default {
-  white-space: nowrap;
 }
 
 .slider-container {

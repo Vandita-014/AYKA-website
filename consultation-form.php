@@ -1,86 +1,9 @@
 <?php
 session_start();
-require 'db.php';
 
-// Get the specialization or symptom from the URL
-$specialization = isset($_GET['specialist']) ? htmlspecialchars($_GET['specialist']) : '';
-$symptom = isset($_GET['symptom']) ? htmlspecialchars($_GET['symptom']) : '';
-
-$amount = 399; // default
-$final_specialization = 'General Physician'; // default specialist
-
-// Check if table exists first
-$table_check = $conn->query("SHOW TABLES LIKE 'consultation_pricing'");
-if ($table_check && $table_check->num_rows > 0) {
-    // Table exists, proceed with queries
-    if (!empty($symptom)) {
-        // Symptom-based consultation - get symptom pricing and related specialist from same table
-        $stmt = $conn->prepare("SELECT video_price, related_specialist FROM consultation_pricing WHERE name = ? AND type = 'symptom' AND is_active = 1 LIMIT 1");
-        if ($stmt) {
-            $stmt->bind_param("s", $symptom);
-            $stmt->execute();
-            $result = $stmt->get_result();
-
-            if ($row = $result->fetch_assoc()) {
-                $amount = (int) $row['video_price'];
-                if (!empty($row['related_specialist'])) {
-                    $final_specialization = $row['related_specialist'];
-                }
-            }
-            $stmt->close();
-        }
-    } elseif (!empty($specialization)) {
-        // Specialist-based consultation - get specialist pricing
-        $final_specialization = $specialization;
-        $stmt = $conn->prepare("SELECT video_price FROM consultation_pricing WHERE name = ? AND type = 'specialist' AND is_active = 1 LIMIT 1");
-        if ($stmt) {
-            $stmt->bind_param("s", $specialization);
-            $stmt->execute();
-            $result = $stmt->get_result();
-
-            if ($row = $result->fetch_assoc()) {
-                $amount = (int) $row['video_price'];
-            }
-            $stmt->close();
-        }
-    } else {
-        // Default case - get General Physician pricing
-        $stmt = $conn->prepare("SELECT video_price FROM consultation_pricing WHERE name = 'General Physician' AND type = 'specialist' AND is_active = 1 LIMIT 1");
-        if ($stmt) {
-            $stmt->execute();
-            $result = $stmt->get_result();
-
-            if ($row = $result->fetch_assoc()) {
-                $amount = (int) $row['video_price'];
-            }
-            $stmt->close();
-        }
-    }
-} else {
-
-    if (!empty($specialization)) {
-        $final_specialization = $specialization;
-    }
-}
-
-// Use final specialization for display and form
-$specialization = $final_specialization;
-
-
-$_SESSION['consultation_amount'] = $amount;
-
-// Determine the selected name for display (symptom or specialist)
-$selected_name = '';
-$selected_type = '';
-if (!empty($symptom)) {
-    $selected_name = $symptom;
-    $selected_type = 'symptom';
-} elseif (!empty($_GET['specialist'])) {
-    $selected_name = htmlspecialchars($_GET['specialist']);
-    $selected_type = 'specialist';
-}
-
-$conn->close();
+// Get the specialization from the URL (e.g., ?specialist=General Physician)
+$specialization = isset($_GET['specialist']) ? htmlspecialchars($_GET['specialist']) : 'General Specialist';
+$amount = isset($_GET['amount']) ? htmlspecialchars($_GET['amount']) : '599';
 ?>
 
 <!DOCTYPE html>
@@ -134,8 +57,6 @@ $conn->close();
             display: flex;
             align-items: center;
             margin-bottom: 20px;
-            flex-wrap: wrap;
-            gap: 8px;
         }
 
         .left-section .logo-section img {
@@ -148,47 +69,6 @@ $conn->close();
             margin: 0;
             color: #c8d439;
             font-size: 16px;
-        }
-
-        .selected-item-badge {
-            display: inline-flex;
-            align-items: center;
-            background-color: #e8f5e9;
-            border: 1px solid #4caf50;
-            border-radius: 20px;
-            padding: 4px 12px;
-            font-size: 12px;
-            color: #2e7d32;
-            font-weight: 600;
-            margin-left: auto;
-            max-width: 100%;
-            word-wrap: break-word;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-
-        .selected-item-badge .check-icon {
-            margin-right: 6px;
-            color: #4caf50;
-            font-weight: bold;
-            font-size: 14px;
-            flex-shrink: 0;
-        }
-
-        @media (max-width: 768px) {
-            .left-section .logo-section {
-                flex-direction: column;
-                align-items: flex-start;
-            }
-
-            .selected-item-badge {
-                margin-left: 0;
-                margin-top: 8px;
-                max-width: 100%;
-                white-space: normal;
-                word-break: break-word;
-            }
         }
 
         .left-section h4 {
@@ -378,12 +258,7 @@ $conn->close();
                     <div class="col-lg-5 left-section">
                         <div class="logo-section">
                             <img src="./assets/images/logo.svg" alt="AYKA Care Logo">
-                            <?php if (!empty($selected_name)): ?>
-                                <span class="selected-item-badge">
-                                    <span class="check-icon">✓</span>
-                                    <span class="selected-name"><?php echo htmlspecialchars($selected_name); ?></span>
-                                </span>
-                            <?php endif; ?>
+
                         </div>
 
                         <h4>Teleconsultation</h4>
@@ -467,7 +342,7 @@ $conn->close();
                             <div class="col-12">
                                 <label class="form-label">Tell us your Symptoms/Health Concerns</label>
                                 <textarea name="symptoms_details" class="form-control" rows="4"
-                                    placeholder="eg.. I have a fever, cough, etc."></textarea>
+                                    placeholder="eg.. I have a fever, cough, etc." required></textarea>
                             </div>
 
                         </div>
@@ -503,26 +378,6 @@ $conn->close();
     </div>
 
     <script>
-        // Ensure amount is set before form submission
-        document.querySelector('form').addEventListener('submit', function (e) {
-            const amountField = document.getElementById('planAmount');
-            const baseAmount = <?php echo $amount; ?>;
-            let amountValue = parseFloat(amountField.value);
-
-
-            if (!amountField.value || isNaN(amountValue) || amountValue <= 0) {
-                amountField.value = baseAmount;
-                amountValue = baseAmount;
-            }
-
-            // Ensure minimum amount of 1 for Razorpay
-            if (amountValue < 1) {
-                amountField.value = 1;
-            }
-
-            // Debug log (remove in production)
-            console.log('Form submitting with amount:', amountField.value, 'Base amount:', baseAmount);
-        });
 
         document.getElementById('applyCoupon').addEventListener('click', function () {
             const code = document.getElementById('couponCode').value;
@@ -540,25 +395,19 @@ $conn->close();
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                 body: 'coupon_code=' + encodeURIComponent(code)
             })
-                .then(response => {
-                    // Check if response is ok
-                    if (!response.ok) {
-                        throw new Error('Server error: ' + response.status);
-                    }
-                    return response.json();
-                })
+                .then(response => response.json())
                 .then(data => {
-                    console.log('Coupon validation response:', data); // Debug log
-
                     if (data.success) {
+
                         let discount = 0;
                         if (data.isPercentage) {
+
                             discount = Math.round((baseAmount * data.discount) / 100);
                         } else {
                             discount = data.discount;
                         }
 
-                        const newTotal = Math.max(baseAmount - discount, 1); // Minimum ₹1 for Razorpay
+                        const newTotal = Math.max(baseAmount - discount, 0); // Prevent negative
 
                         // Update UI with new total
                         document.getElementById('totalAmount').innerText = newTotal;
@@ -567,22 +416,19 @@ $conn->close();
                         document.getElementById('appliedCouponInput').value = code;
 
                         msg.style.color = "green";
-                        msg.innerText = "✓ Success! ₹" + discount + " discount applied. New total: ₹" + newTotal;
+                        msg.innerText = "✓ Success! ₹" + discount + " discount applied.";
                         document.getElementById('applyCoupon').disabled = true;
                         document.getElementById('couponCode').readOnly = true;
                         document.getElementById('removeCoupon').style.display = 'inline-block';
-
-                        console.log('Coupon applied successfully. Base:', baseAmount, 'Discount:', discount, 'New Total:', newTotal);
                     } else {
                         msg.style.color = "red";
-                        msg.innerText = "✗ " + (data.message || 'Invalid coupon code');
-                        console.error('Coupon validation failed:', data.message);
+                        msg.innerText = "✗ " + data.message;
                     }
                 })
                 .catch(error => {
                     msg.style.color = "red";
-                    msg.innerText = "✗ Error validating coupon. Please try again.";
-                    console.error('Coupon validation error:', error);
+                    msg.innerText = "Error validating coupon";
+                    console.error(error);
                 });
         });
 
